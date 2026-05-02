@@ -11,7 +11,7 @@ import { useToast } from '../context/ToastContext'
 import { getUserSettings } from '../services/firestoreService'
 import { getProjectById, TOTAL_STAGES, updateProjectById } from '../utils/projectStorage'
 
-const API_BASE = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'
+const BASE_URL = import.meta.env.VITE_BACKEND_URL
 
 const stages = [
   { key: 'stage1', title: 'Idea and Goal' },
@@ -114,7 +114,7 @@ function WorkspacePage() {
       messages: outgoingMessages.slice(-6).map((msg) => ({ role: msg.role, content: msg.content })),
     }
 
-    const response = await fetch(`${API_BASE}/api/chat`, {
+    const response = await fetch(`${BASE_URL}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -122,7 +122,7 @@ function WorkspacePage() {
 
     if (!response.ok) {
       const errData = await response.json().catch(() => ({}))
-      throw new Error(errData.message || 'Backend is unavailable. Please ensure server is running on port 5000.')
+      throw new Error(errData.message || 'Backend is unavailable. Please check your backend URL and deployment status.')
     }
 
     return response.json()

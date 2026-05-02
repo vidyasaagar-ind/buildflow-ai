@@ -3,7 +3,7 @@ import { exportMarkdownAsPDF } from '../../utils/exportPDF'
 import { useToast } from '../../context/ToastContext'
 import Skeleton from '../ui/Skeleton'
 
-const API_BASE = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'
+const BASE_URL = import.meta.env.VITE_BACKEND_URL
 
 const docTabs = [
   { key: 'brd', label: 'BRD' },
@@ -55,7 +55,7 @@ function safeFileNamePart(value) {
 }
 
 async function requestDocGeneration(type, project) {
-  const response = await fetch(`${API_BASE}/api/generate-docs`, {
+  const response = await fetch(`${BASE_URL}/api/generate-docs`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ type, project }),
