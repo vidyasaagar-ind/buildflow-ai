@@ -55,6 +55,10 @@ function safeFileNamePart(value) {
 }
 
 async function requestDocGeneration(type, project) {
+  if (!BASE_URL) {
+    throw new Error('Backend URL is not configured. Set VITE_BACKEND_URL in frontend environment.')
+  }
+
   const response = await fetch(`${BASE_URL}/api/generate-docs`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

@@ -23,12 +23,38 @@ function normalizeStageUpdates(input) {
   }
 }
 
+function normalizeBoolean(input) {
+  return typeof input === 'boolean' ? input : false
+}
+
+function normalizeSummary(input) {
+  return typeof input === 'string' ? input.trim() : ''
+}
+
+function parseAiJson(raw) {
+  if (typeof raw !== 'string') return null
+
+  try {
+    return JSON.parse(raw)
+  } catch {
+    const fencedMatch = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)
+    if (fencedMatch?.[1]) {
+      try {
+        return JSON.parse(fencedMatch[1])
+      } catch {
+        return null
+      }
+    }
+    return null
+  }
+}
+
 router.post('/', async (req, res) => {
   try {
     const { projectId, currentStage = 1, messages = [], projectContext = {}, role = '', blueprint = {} } = req.body || {}
 
     if (Number(currentStage) === 6) {
-      return res.json({ reply: 'Planning complete.', extracted: {} })
+      return res.json({ reply: 'Planning complete.', stageComplete: true, summary: '', extracted: {} })
     }
 
     const stageNumber = Number(currentStage) || 1
@@ -86,19 +112,32 @@ router.post('/', async (req, res) => {
 
     const raw = await callAI(modelMessages)
 
-    let reply = raw
+    let reply = 'I could not generate a response right now.'
     let extracted = normalizeStageUpdates({})
+    let stageComplete = false
+    let summary = ''
 
     try {
-      const parsed = JSON.parse(raw)
-      reply = typeof parsed.reply === 'string' && parsed.reply.trim() ? parsed.reply : raw
+      const parsed = parseAiJson(raw)
+      if (!parsed) throw new Error('Invalid AI JSON payload')
+      reply = typeof parsed.reply === 'string' && parsed.reply.trim() ? parsed.reply : reply
+      stageComplete = normalizeBoolean(parsed.stage_complete)
+      summary = normalizeSummary(parsed.stage_summary)
       extracted = normalizeStageUpdates(parsed.stage_updates)
     } catch (parseError) {
       console.error('AI JSON parse failed:', parseError.message)
       extracted = normalizeStageUpdates({})
+      stageComplete = false
+      summary = ''
+      reply = 'I could not process that response. Please try rephrasing your answer for this stage.'
     }
 
-    res.json({ reply, extracted })
+    res.json({
+      reply,
+      stageComplete,
+      summary,
+      extracted,
+    })
   } catch (error) {
     res.status(500).json({
       error: 'CHAT_ROUTE_ERROR',

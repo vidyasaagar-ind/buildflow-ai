@@ -44,6 +44,7 @@ function WorkspacePage() {
   const [isThinking, setIsThinking] = useState(false)
   const [draftAnswer, setDraftAnswer] = useState('')
   const [userRole, setUserRole] = useState('')
+  const [stageCompletionMap, setStageCompletionMap] = useState({})
   const { showToast } = useToast()
 
   useEffect(() => {
@@ -78,6 +79,10 @@ function WorkspacePage() {
   }
 
   const callChatApi = async (projectData, outgoingMessages, stageNumber) => {
+    if (!BASE_URL) {
+      throw new Error('Backend URL is not configured. Set VITE_BACKEND_URL in frontend environment.')
+    }
+
     const payload = {
       projectId: projectData.id,
       currentStage: stageNumber,
@@ -149,9 +154,9 @@ function WorkspacePage() {
     try {
       const seedMessage = {
         role: 'user',
-        content: `We are now in Stage ${targetStage}: ${stages[targetStage - 1].title}. Ask only clarification questions relevant to this stage.`,
+        content: `Ask the first question for Stage ${targetStage}: ${stages[targetStage - 1].title}.`,
       }
-      const { reply, extracted } = await callChatApi(baseProject, [seedMessage], targetStage)
+      const { reply, extracted, stageComplete, summary } = await callChatApi(baseProject, [seedMessage], targetStage)
 
       await handleProjectUpdate((existing) => {
         const updates = extracted || {}
@@ -167,6 +172,9 @@ function WorkspacePage() {
             updatedProject.blueprint[key] = value
           }
         })
+        if (summary && targetStage <= 5) {
+          updatedProject.blueprint[`stage${targetStage}`] = summary
+        }
 
         const completedStages = getCompletedStages(updatedProject.blueprint)
 
@@ -179,6 +187,7 @@ function WorkspacePage() {
           },
         }
       })
+      setStageCompletionMap((prev) => ({ ...prev, [`stage${targetStage}`]: Boolean(stageComplete) }))
     } catch (error) {
       showToast(error.message || 'AI bootstrap failed', 'error')
     } finally {
@@ -225,8 +234,9 @@ function WorkspacePage() {
   const currentStageKey = `stage${currentStage}`
   const lastAssistantMessage = [...stageMessages].reverse().find((message) => message.role === 'assistant')
   const aiSaysStageComplete = /stage is complete/i.test(lastAssistantMessage?.content || '')
+  const stageCompleteFromApi = Boolean(stageCompletionMap[currentStageKey])
   const isStageComplete = currentStage <= 5
-    ? Boolean((project.blueprint?.[currentStageKey] || '').trim()) || aiSaysStageComplete
+    ? Boolean((project.blueprint?.[currentStageKey] || '').trim()) || aiSaysStageComplete || stageCompleteFromApi
     : false
   const completedStages = project.completedStages || getCompletedStages(project.blueprint)
   const isPreviewMode = currentStage !== progressStage
@@ -280,9 +290,12 @@ function WorkspacePage() {
             updated.blueprint[key] = value
           }
         })
+        if (response.summary && currentStage <= 5) {
+          updated.blueprint[currentStageKey] = response.summary
+        }
 
         const stageCompleteNow = currentStage <= 5
-          ? Boolean((updated.blueprint[currentStageKey] || '').trim())
+          ? Boolean((updated.blueprint[currentStageKey] || '').trim()) || Boolean(response.stageComplete)
           : false
 
         const completionMessage = stageCompleteNow
@@ -302,6 +315,7 @@ function WorkspacePage() {
           },
         }
       })
+      setStageCompletionMap((prev) => ({ ...prev, [currentStageKey]: Boolean(response.stageComplete) }))
       showToast('AI response received', 'success')
     } catch (error) {
       showToast(error.message || 'AI chat failed', 'error')
