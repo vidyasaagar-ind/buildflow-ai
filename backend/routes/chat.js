@@ -31,20 +31,19 @@ function normalizeSummary(input) {
   return typeof input === 'string' ? input.trim() : ''
 }
 
-function parseAiJson(raw) {
+function safeParseAIResponse(raw) {
   if (typeof raw !== 'string') return null
 
   try {
     return JSON.parse(raw)
   } catch {
-    const fencedMatch = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)
-    if (fencedMatch?.[1]) {
-      try {
-        return JSON.parse(fencedMatch[1])
-      } catch {
-        return null
-      }
+    try {
+      const match = raw.match(/\{[\s\S]*\}/)
+      if (match) return JSON.parse(match[0])
+    } catch {
+      return null
     }
+
     return null
   }
 }
@@ -111,26 +110,23 @@ router.post('/', async (req, res) => {
     ]
 
     const raw = await callAI(modelMessages)
-
-    let reply = 'I could not generate a response right now.'
-    let extracted = normalizeStageUpdates({})
-    let stageComplete = false
-    let summary = ''
-
-    try {
-      const parsed = parseAiJson(raw)
-      if (!parsed) throw new Error('Invalid AI JSON payload')
-      reply = typeof parsed.reply === 'string' && parsed.reply.trim() ? parsed.reply : reply
-      stageComplete = normalizeBoolean(parsed.stage_complete)
-      summary = normalizeSummary(parsed.stage_summary)
-      extracted = normalizeStageUpdates(parsed.stage_updates)
-    } catch (parseError) {
-      console.error('AI JSON parse failed:', parseError.message)
-      extracted = normalizeStageUpdates({})
-      stageComplete = false
-      summary = ''
-      reply = 'I could not process that response. Please try rephrasing your answer for this stage.'
+    console.log('AI RAW RESPONSE:', raw)
+    const parsed = safeParseAIResponse(raw)
+    if (!parsed) {
+      return res.json({
+        reply: "I'm having trouble understanding that. Could you clarify your answer?",
+        stageComplete: false,
+        summary: '',
+        extracted: {},
+      })
     }
+
+    const reply = typeof parsed.reply === 'string' && parsed.reply.trim()
+      ? parsed.reply
+      : "I'm having trouble understanding that. Could you clarify your answer?"
+    const stageComplete = normalizeBoolean(parsed.stage_complete)
+    const summary = normalizeSummary(parsed.stage_summary)
+    const extracted = normalizeStageUpdates(parsed.stage_updates)
 
     res.json({
       reply,
