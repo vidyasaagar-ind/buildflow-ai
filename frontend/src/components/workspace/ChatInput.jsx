@@ -3,13 +3,63 @@ import { useEffect, useRef, useState } from 'react'
 function ChatInput({ value, onChange, onSubmit, disabled = false, placeholder = 'Share your stage answer...' }) {
   const textareaRef = useRef(null)
   const recognitionRef = useRef(null)
+  const [input, setInput] = useState(value || '')
   const [isListening, setIsListening] = useState(false)
+
+  useEffect(() => {
+    setInput(value || '')
+  }, [value])
 
   useEffect(() => {
     if (!textareaRef.current) return
     textareaRef.current.style.height = 'auto'
     textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 220)}px`
-  }, [value])
+  }, [input])
+
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SpeechRecognition) return undefined
+
+    const recognition = new SpeechRecognition()
+    recognition.continuous = false
+    recognition.interimResults = true
+    recognition.lang = 'en-US'
+    recognitionRef.current = recognition
+
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.onresult = null
+        recognitionRef.current.onend = null
+        recognitionRef.current.onerror = null
+        recognitionRef.current.stop()
+      }
+      recognitionRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    const recognition = recognitionRef.current
+    if (!recognition) return
+
+    recognition.onresult = (event) => {
+      let transcript = ''
+      for (let i = 0; i < event.results.length; i += 1) {
+        transcript += event.results[i][0].transcript
+      }
+      console.log('VOICE:', transcript)
+      setInput(transcript)
+      onChange(transcript)
+    }
+
+    recognition.onend = () => {
+      setIsListening(false)
+    }
+
+    recognition.onerror = (event) => {
+      console.error('Speech recognition error:', event.error)
+      setIsListening(false)
+    }
+  }, [onChange])
 
   const handleKeyDown = (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -18,43 +68,21 @@ function ChatInput({ value, onChange, onSubmit, disabled = false, placeholder = 
     }
   }
 
-  const handleVoiceInput = () => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SpeechRecognition) {
+  const handleMicClick = () => {
+    const recognition = recognitionRef.current
+    if (!recognition) {
       alert('Voice input not supported in this browser')
       return
     }
-    if (disabled || isListening) return
+    if (disabled) return
 
-    if (recognitionRef.current) {
-      recognitionRef.current.stop()
-      return
-    }
-
-    const recognition = new SpeechRecognition()
-    recognition.lang = 'en-US'
-    recognition.interimResults = false
-    recognition.maxAlternatives = 1
-
-    recognition.onstart = () => setIsListening(true)
-    recognition.onend = () => {
+    if (isListening) {
+      recognition.stop()
       setIsListening(false)
-      recognitionRef.current = null
+    } else {
+      recognition.start()
+      setIsListening(true)
     }
-    recognition.onresult = (event) => {
-      const transcript = event.results?.[0]?.[0]?.transcript || ''
-      if (transcript.trim()) {
-        onChange(transcript)
-      }
-    }
-    recognition.onerror = (event) => {
-      console.error('Speech recognition error:', event.error)
-      setIsListening(false)
-      recognitionRef.current = null
-    }
-
-    recognitionRef.current = recognition
-    recognition.start()
   }
 
   return (
@@ -62,8 +90,11 @@ function ChatInput({ value, onChange, onSubmit, disabled = false, placeholder = 
       <div className="flex items-center gap-2 w-full">
         <textarea
           ref={textareaRef}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
+          value={input}
+          onChange={(event) => {
+            setInput(event.target.value)
+            onChange(event.target.value)
+          }}
           onKeyDown={handleKeyDown}
           rows={1}
           placeholder={placeholder}
@@ -73,8 +104,8 @@ function ChatInput({ value, onChange, onSubmit, disabled = false, placeholder = 
 
         <button
           type="button"
-          onClick={handleVoiceInput}
-          disabled={disabled || isListening}
+          onClick={handleMicClick}
+          disabled={disabled}
           className={`inline-flex items-center justify-center rounded-full p-2 transition-all duration-200 hover:bg-gray-200 dark:hover:bg-gray-700 ${
             isListening ? 'text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-slate-300'
           } disabled:cursor-not-allowed disabled:opacity-60`}
