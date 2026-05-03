@@ -87,16 +87,6 @@ router.post('/', async (req, res) => {
       ? `Project Summary:\n${memoryLines.join('\n')}`
       : 'Project Summary:\n- No previous stage memory yet.'
 
-    const contextSummary = {
-      projectId: projectId || 'unknown',
-      currentStage: stageNumber,
-      role: role || 'unspecified',
-      title: projectContext.title || '',
-      idea: projectContext.idea || '',
-      targetUsers: projectContext.targetUser || '',
-      previous_stage_memory: filteredMemory,
-    }
-
     const limitedMessages = Array.isArray(messages) ? messages.slice(-6) : []
     const currentStageLabel = `Stage ${stageNumber}`
 
@@ -105,7 +95,6 @@ router.post('/', async (req, res) => {
       { role: 'system', content: `User Role: ${role || 'unspecified'}` },
       { role: 'system', content: `Current Stage: ${currentStageLabel}` },
       { role: 'system', content: memoryBlock },
-      { role: 'system', content: `Project Summary:\n${JSON.stringify(contextSummary)}` },
       ...limitedMessages,
     ]
 
@@ -113,8 +102,11 @@ router.post('/', async (req, res) => {
     console.log('AI RAW RESPONSE:', raw)
     const parsed = safeParseAIResponse(raw)
     if (!parsed) {
+      console.log('AI PARSE FAILED. RAW:', raw)
       return res.json({
-        reply: "I'm having trouble understanding that. Could you clarify your answer?",
+        reply: raw && raw.length < 300
+          ? raw
+          : 'Please rephrase your answer so I can understand it better.',
         stageComplete: false,
         summary: '',
         extracted: {},
