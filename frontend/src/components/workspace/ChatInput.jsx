@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 function ChatInput({ value, onChange, onSubmit, disabled = false, placeholder = 'Share your stage answer...' }) {
   const textareaRef = useRef(null)
   const recognitionRef = useRef(null)
+  const isRecognizingRef = useRef(false)
   const [input, setInput] = useState(value || '')
   const [isListening, setIsListening] = useState(false)
 
@@ -22,7 +23,7 @@ function ChatInput({ value, onChange, onSubmit, disabled = false, placeholder = 
 
     const recognition = new SpeechRecognition()
     recognition.continuous = false
-    recognition.interimResults = true
+    recognition.interimResults = false
     recognition.lang = 'en-US'
     recognitionRef.current = recognition
 
@@ -42,10 +43,10 @@ function ChatInput({ value, onChange, onSubmit, disabled = false, placeholder = 
     if (!recognition) return
 
     recognition.onresult = (event) => {
-      let transcript = ''
-      for (let i = 0; i < event.results.length; i += 1) {
-        transcript += event.results[i][0].transcript
-      }
+      const result = event.results[event.results.length - 1]
+      if (!result.isFinal) return
+      const transcript = result[0].transcript
+
       console.log('VOICE:', transcript)
       setInput(transcript)
       onChange(transcript)
@@ -53,11 +54,22 @@ function ChatInput({ value, onChange, onSubmit, disabled = false, placeholder = 
 
     recognition.onend = () => {
       setIsListening(false)
+      isRecognizingRef.current = false
     }
 
     recognition.onerror = (event) => {
-      console.error('Speech recognition error:', event.error)
+      console.warn('Speech error:', event.error)
+
+      if (event.error === 'no-speech') {
+        return
+      }
+
+      if (event.error === 'not-allowed') {
+        alert('Microphone permission denied')
+      }
+
       setIsListening(false)
+      isRecognizingRef.current = false
     }
   }, [onChange])
 
@@ -71,23 +83,29 @@ function ChatInput({ value, onChange, onSubmit, disabled = false, placeholder = 
   const handleMicClick = () => {
     const recognition = recognitionRef.current
     if (!recognition) {
-      alert('Voice input not supported in this browser')
+      alert('Speech recognition not supported')
       return
     }
     if (disabled) return
 
-    if (isListening) {
+    if (isRecognizingRef.current) {
       recognition.stop()
+      isRecognizingRef.current = false
       setIsListening(false)
     } else {
-      recognition.start()
-      setIsListening(true)
+      try {
+        recognition.start()
+        isRecognizingRef.current = true
+        setIsListening(true)
+      } catch (err) {
+        console.warn('Start error:', err.message)
+      }
     }
   }
 
   return (
-    <div className="border border-slate-300 rounded-2xl px-4 py-2 flex items-center gap-2 bg-white shadow-sm transition-all duration-200 hover:shadow-md dark:border-slate-700 dark:bg-slate-900">
-      <div className="flex items-center gap-2 w-full">
+    <div className="flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2 shadow-sm transition-all duration-200 hover:shadow-md dark:border-slate-700 dark:bg-slate-900">
+      <div className="flex w-full items-center gap-2">
         <textarea
           ref={textareaRef}
           value={input}
@@ -134,7 +152,7 @@ function ChatInput({ value, onChange, onSubmit, disabled = false, placeholder = 
         </button>
       </div>
       {isListening ? (
-        <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">Listening...</p>
+        <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">Listening... Speak now</p>
       ) : null}
     </div>
   )
