@@ -19,8 +19,11 @@ COMPLETION RULE:
 RESPONSE FORMAT (STRICT):
 {
   "reply": "Your natural chatbot message",
+  "question_complete": false,
   "stage_complete": false,
   "stage_summary": "Short structured summary",
+  "saved_answer": "",
+  "next_question_index": 0,
   "stage_updates": {
     "stage1": "",
     "stage2": "",
@@ -32,6 +35,8 @@ RESPONSE FORMAT (STRICT):
 
 IMPORTANT:
 - reply must be clean text
+- Ask one question at a time
+- Questions must be contextual to title/category/idea/target users/deadline
 - NEVER include JSON inside reply
 - NEVER break JSON format`
 
@@ -72,13 +77,24 @@ async function callAI(messages) {
 
 function buildDocPrompt(type, project) {
   const docType = type.toUpperCase()
+  const stageText = (stageValue) => {
+    if (typeof stageValue === 'string') return stageValue
+    if (!stageValue || typeof stageValue !== 'object') return ''
+    const answers = Array.isArray(stageValue.answers) ? stageValue.answers.filter((entry) => typeof entry === 'string' && entry.trim()) : []
+    const summary = typeof stageValue.summary === 'string' ? stageValue.summary.trim() : ''
+    return [summary, ...answers].filter(Boolean).join('\n')
+  }
 
   const baseContext = `Project Title: ${project.title || ''}
-Idea: ${project.blueprint?.stage1 || ''}
-Users: ${project.blueprint?.stage2 || ''}
-Features: ${project.blueprint?.stage3 || ''}
-UI/UX: ${project.blueprint?.stage4 || ''}
-Tech Stack: ${project.blueprint?.stage5 || ''}`
+Category: ${project.category || ''}
+Detailed Idea: ${project.idea || ''}
+Target Users: ${project.targetUser || ''}
+Deadline: ${project.deadline || ''}
+Idea: ${stageText(project.blueprint?.stage1)}
+Users: ${stageText(project.blueprint?.stage2)}
+Features: ${stageText(project.blueprint?.stage3)}
+UI/UX: ${stageText(project.blueprint?.stage4)}
+Tech Stack: ${stageText(project.blueprint?.stage5)}`
 
   const typeInstructionMap = {
     brd: 'Generate a complete Business Requirements Document with business context, scope, objectives, user groups, requirements, success criteria, and risks.',

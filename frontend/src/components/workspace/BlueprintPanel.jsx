@@ -28,17 +28,37 @@ function BlueprintPanel({ project, activeTab, onTabChange, onProjectUpdate }) {
       {activeTab === 'Blueprint' ? (
         <div className="mt-4 space-y-3 text-sm">
           {[
-            ['Stage 1: Idea and Goal', project.blueprint.stage1],
-            ['Stage 2: Target Users and Use Case', project.blueprint.stage2],
-            ['Stage 3: Core Features', project.blueprint.stage3],
-            ['Stage 4: UI/UX Preferences', project.blueprint.stage4],
-            ['Stage 5: Tech Stack and Integrations', project.blueprint.stage5],
-          ].map(([label, value]) => (
+            ['stage1', 'Stage 1: Idea and Goal'],
+            ['stage2', 'Stage 2: Target Users and Use Case'],
+            ['stage3', 'Stage 3: Core Features'],
+            ['stage4', 'Stage 4: UI/UX Preferences'],
+            ['stage5', 'Stage 5: Tech Stack and Integrations'],
+          ].map(([key, label]) => {
+            const stageNode = project.blueprint?.[key] || {}
+            const status = stageNode.status || 'pending'
+            const summary = stageNode.summary || ''
+            const answerCount = Array.isArray(stageNode.answers) ? stageNode.answers.length : 0
+            const statusLabel = status === 'completed' ? 'Completed' : status === 'in-progress' ? 'In Progress' : 'Pending'
+
+            return (
             <div key={label} className="rounded-xl bg-slate-100 p-3 dark:bg-slate-800">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
-              <p className="mt-1 text-slate-700 dark:text-slate-200">{value || 'Not answered yet'}</p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                  status === 'completed'
+                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                    : status === 'in-progress'
+                      ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                      : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-200'
+                }`}>
+                  {statusLabel}
+                </span>
+              </div>
+              <p className="mt-1 text-slate-700 dark:text-slate-200">{summary || 'Not answered yet'}</p>
+              <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Answers saved: {answerCount}</p>
             </div>
-          ))}
+            )
+          })}
         </div>
       ) : null}
 

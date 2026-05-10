@@ -92,8 +92,20 @@ function OutputsPanel({ project, onProjectUpdate }) {
   )
 
   const ensureCanGenerate = () => {
-    if (!project.blueprint?.stage1?.trim()) {
-      showToast('Please complete initial chat before generating documents', 'error')
+    const hasStageData = (stageValue) => {
+      if (typeof stageValue === 'string') return Boolean(stageValue.trim())
+      if (!stageValue || typeof stageValue !== 'object') return false
+      const summary = typeof stageValue.summary === 'string' ? stageValue.summary.trim() : ''
+      const answers = Array.isArray(stageValue.answers)
+        ? stageValue.answers.filter((entry) => typeof entry === 'string' && entry.trim())
+        : []
+      return Boolean(summary || answers.length)
+    }
+
+    const required = ['stage1', 'stage2', 'stage3', 'stage4', 'stage5']
+    const missing = required.filter((stageKey) => !hasStageData(project.blueprint?.[stageKey]))
+    if (missing.length) {
+      showToast(`Complete all stages before generation. Missing: ${missing.join(', ')}`, 'error')
       return false
     }
     return true

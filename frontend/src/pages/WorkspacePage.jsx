@@ -26,14 +26,6 @@ function getStageMessages(messages, stageNumber) {
   return messages?.[`stage${stageNumber}`] || []
 }
 
-function getCompletedStages(blueprint) {
-  const completed = []
-  ;['stage1', 'stage2', 'stage3', 'stage4', 'stage5'].forEach((key, idx) => {
-    if ((blueprint?.[key] || '').trim()) completed.push(idx + 1)
-  })
-  return completed
-}
-
 function WorkspacePage() {
   const { projectId } = useParams()
   const { user } = useAuth()
@@ -46,6 +38,15 @@ function WorkspacePage() {
   const [userRole, setUserRole] = useState('')
   const [stageCompletionMap, setStageCompletionMap] = useState({})
   const { showToast } = useToast()
+
+  useEffect(() => {
+    if (!project?.completedStages || !Array.isArray(project.completedStages)) return
+    const map = {}
+    project.completedStages.forEach((stageNo) => {
+      map[`stage${stageNo}`] = true
+    })
+    setStageCompletionMap(map)
+  }, [project?.id, project?.completedStages])
 
   useEffect(() => {
     if (!user) return
@@ -70,12 +71,62 @@ function WorkspacePage() {
   const progressStage = Math.min(Math.max(project?.currentStage ?? 1, 1), TOTAL_STAGES)
   const currentStage = Math.min(Math.max(selectedStage ?? progressStage, 1), TOTAL_STAGES)
   const currentStageMeta = useMemo(() => stages[currentStage - 1], [currentStage])
+  const currentStageKey = `stage${currentStage}`
 
   const handleProjectUpdate = async (updater) => {
     if (!project?.id) return null
     const updated = await updateProjectById(project.id, updater, user.uid)
     if (updated) setProject(updated)
     return updated
+  }
+
+  const getStageNode = (blueprint, stageNumber) => {
+    const stageKey = `stage${stageNumber}`
+    const fallbackStatus = stageNumber === 1 ? 'in-progress' : 'pending'
+    const node = blueprint?.[stageKey]
+    if (!node || typeof node !== 'object') {
+      return { status: fallbackStatus, answers: [], summary: '', questionIndex: 0 }
+    }
+    return {
+      status: typeof node.status === 'string' ? node.status : fallbackStatus,
+      answers: Array.isArray(node.answers) ? node.answers : [],
+      summary: typeof node.summary === 'string' ? node.summary : '',
+      questionIndex: Number.isInteger(node.questionIndex) ? node.questionIndex : 0,
+    }
+  }
+
+  const ensureStageInitialized = async (stageNumber, baseProject = project) => {
+    if (!baseProject || stageNumber > 5) return
+    const stageKey = `stage${stageNumber}`
+    const existingMessages = getStageMessages(baseProject.messages, stageNumber)
+    if (existingMessages.length) return
+
+    const stageNode = getStageNode(baseProject.blueprint, stageNumber)
+    let response = {}
+    try {
+      response = await callChatApi(baseProject, [], stageNumber)
+    } catch (error) {
+      response = { reply: 'Please share more details for this stage.', next_question_index: stageNode.questionIndex }
+    }
+    const assistantMessage = { role: 'assistant', content: response.reply || 'Please share details for this stage.' }
+
+    await handleProjectUpdate((existing) => ({
+      ...existing,
+      blueprint: {
+        ...existing.blueprint,
+        [stageKey]: {
+          ...getStageNode(existing.blueprint, stageNumber),
+          questionIndex: Number.isInteger(response.next_question_index) ? response.next_question_index : stageNode.questionIndex,
+          status: stageNumber === 1 && getStageNode(existing.blueprint, stageNumber).status === 'pending'
+            ? 'in-progress'
+            : getStageNode(existing.blueprint, stageNumber).status,
+        },
+      },
+      messages: {
+        ...existing.messages,
+        [stageKey]: [assistantMessage],
+      },
+    }))
   }
 
   const callChatApi = async (projectData, outgoingMessages, stageNumber) => {
@@ -93,6 +144,7 @@ function WorkspacePage() {
         stage4: projectData.blueprint.stage4,
         stage5: projectData.blueprint.stage5,
       },
+      questionIndex: getStageNode(projectData.blueprint, stageNumber).questionIndex,
       projectSummary: {
         title: projectData.title,
         idea: projectData.idea,
@@ -110,6 +162,7 @@ function WorkspacePage() {
         category: projectData.category,
         idea: projectData.idea,
         targetUser: projectData.targetUser,
+        deadline: projectData.deadline,
         stage1: projectData.blueprint.stage1,
         stage2: projectData.blueprint.stage2,
         stage3: projectData.blueprint.stage3,
@@ -133,71 +186,9 @@ function WorkspacePage() {
     return response.json()
   }
 
-  const bootstrapStageAssistant = async (targetStage, baseProject) => {
-    if (!baseProject) return
-
-    if (targetStage <= 5 && (baseProject.blueprint?.[`stage${targetStage}`] || '').trim()) {
-      const infoMsg = { role: 'assistant', content: 'We have enough information. Move to next stage.' }
-      await handleProjectUpdate((existing) => ({
-        ...existing,
-        messages: {
-          ...existing.messages,
-          [`stage${targetStage}`]: [infoMsg],
-        },
-      }))
-      return
-    }
-
-    if (getStageMessages(baseProject.messages, targetStage).length > 0) return
-
-    setIsThinking(true)
-    try {
-      const seedMessage = {
-        role: 'user',
-        content: `Ask the first question for Stage ${targetStage}: ${stages[targetStage - 1].title}.`,
-      }
-      const { reply, extracted, stageComplete, summary } = await callChatApi(baseProject, [seedMessage], targetStage)
-
-      await handleProjectUpdate((existing) => {
-        const updates = extracted || {}
-        const updatedProject = {
-          ...existing,
-          blueprint: {
-            ...existing.blueprint,
-          },
-        }
-
-        Object.entries(updates).forEach(([key, value]) => {
-          if (value && value.trim() !== '') {
-            updatedProject.blueprint[key] = value
-          }
-        })
-        if (summary && targetStage <= 5) {
-          updatedProject.blueprint[`stage${targetStage}`] = summary
-        }
-
-        const completedStages = getCompletedStages(updatedProject.blueprint)
-
-        return {
-          ...updatedProject,
-          completedStages,
-          messages: {
-            ...existing.messages,
-            [`stage${targetStage}`]: [{ role: 'assistant', content: reply }],
-          },
-        }
-      })
-      setStageCompletionMap((prev) => ({ ...prev, [`stage${targetStage}`]: Boolean(stageComplete) }))
-    } catch (error) {
-      showToast(error.message || 'AI bootstrap failed', 'error')
-    } finally {
-      setIsThinking(false)
-    }
-  }
-
   useEffect(() => {
     if (!project) return
-    bootstrapStageAssistant(currentStage, project)
+    ensureStageInitialized(currentStage, project)
   }, [project?.id, currentStage])
 
   if (isLoading) {
@@ -231,14 +222,12 @@ function WorkspacePage() {
   }
 
   const stageMessages = getStageMessages(project.messages, currentStage)
-  const currentStageKey = `stage${currentStage}`
   const lastAssistantMessage = [...stageMessages].reverse().find((message) => message.role === 'assistant')
-  const aiSaysStageComplete = /stage is complete/i.test(lastAssistantMessage?.content || '')
   const stageCompleteFromApi = Boolean(stageCompletionMap[currentStageKey])
   const isStageComplete = currentStage <= 5
-    ? Boolean((project.blueprint?.[currentStageKey] || '').trim()) || aiSaysStageComplete || stageCompleteFromApi
+    ? stageCompleteFromApi || getStageNode(project.blueprint, currentStage).status === 'completed'
     : false
-  const completedStages = project.completedStages || getCompletedStages(project.blueprint)
+  const completedStages = Array.isArray(project.completedStages) ? project.completedStages : []
   const isPreviewMode = currentStage !== progressStage
 
   const handleSendMessage = async () => {
@@ -273,38 +262,43 @@ function WorkspacePage() {
     setIsThinking(true)
 
     try {
-      if ((project.blueprint?.[currentStageKey] || '').trim()) {
-        showToast('We have enough information. Move to next stage.', 'info')
-        return
-      }
-
       const response = await callChatApi(project, outgoing, currentStage)
       await handleProjectUpdate((prev) => {
         const updated = {
           ...prev,
           blueprint: { ...prev.blueprint },
         }
+        const currentNode = getStageNode(prev.blueprint, currentStage)
+        const savedAnswer = (response.saved_answer || userMessage.content || '').trim()
+        const nextAnswers = savedAnswer
+          ? [...currentNode.answers, savedAnswer]
+          : [...currentNode.answers]
+        const extractedSummary = response.extracted?.[currentStageKey] || ''
+        const nextSummary = (response.stage_summary || response.summary || extractedSummary || '').trim()
+        const nextQuestionIndex = Number.isInteger(response.next_question_index)
+          ? response.next_question_index
+          : currentNode.questionIndex
+        const stageCompleteNow = Boolean(response.stage_complete ?? response.stageComplete)
 
-        Object.entries(response.extracted || {}).forEach(([key, value]) => {
-          if (value && value.trim() !== '') {
-            updated.blueprint[key] = value
-          }
-        })
-        if (response.summary && currentStage <= 5) {
-          updated.blueprint[currentStageKey] = response.summary
+        updated.blueprint[currentStageKey] = {
+          ...currentNode,
+          answers: nextAnswers,
+          questionIndex: nextQuestionIndex,
+          summary: nextSummary || currentNode.summary,
+          status: stageCompleteNow ? 'completed' : 'in-progress',
         }
 
-        const stageCompleteNow = currentStage <= 5
-          ? Boolean((updated.blueprint[currentStageKey] || '').trim()) || Boolean(response.stageComplete)
-          : false
-
+        const existingCompleted = Array.isArray(prev.completedStages) ? [...prev.completedStages] : []
+        const nextCompleted = stageCompleteNow && !existingCompleted.includes(currentStage)
+          ? [...existingCompleted, currentStage]
+          : existingCompleted
         const completionMessage = stageCompleteNow
           ? [{ role: 'assistant', content: "Great, we have enough information for this stage. Let's move to the next stage." }]
           : []
 
         return {
           ...updated,
-          completedStages: getCompletedStages(updated.blueprint),
+          completedStages: nextCompleted,
           messages: {
             ...prev.messages,
             [currentStageKey]: [
@@ -329,6 +323,17 @@ function WorkspacePage() {
     const updated = await handleProjectUpdate((existing) => ({
       ...existing,
       currentStage: nextStage,
+      blueprint: nextStage <= 5
+        ? {
+            ...existing.blueprint,
+            [`stage${nextStage}`]: {
+              ...getStageNode(existing.blueprint, nextStage),
+              status: getStageNode(existing.blueprint, nextStage).status === 'pending'
+                ? 'in-progress'
+                : getStageNode(existing.blueprint, nextStage).status,
+            },
+          }
+        : existing.blueprint,
       messages: {
         ...existing.messages,
         [`stage${nextStage}`]: existing.messages?.[`stage${nextStage}`] || [],
@@ -340,7 +345,7 @@ function WorkspacePage() {
       setSelectedStage(nextStage)
       setDraftAnswer('')
       showToast(nextStage <= TOTAL_STAGES ? `Moved to Stage ${nextStage}` : 'Already at final stage', 'info')
-      bootstrapStageAssistant(nextStage, updated)
+      ensureStageInitialized(nextStage, updated)
     }
   }
 
@@ -355,7 +360,7 @@ function WorkspacePage() {
           [`stage${stageNumber}`]: existing.messages?.[`stage${stageNumber}`] || [],
         },
       }))
-      if (updated) bootstrapStageAssistant(stageNumber, updated)
+      if (updated) ensureStageInitialized(stageNumber, updated)
     }
   }
 

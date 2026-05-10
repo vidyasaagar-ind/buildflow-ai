@@ -3,17 +3,29 @@ function valueOrFallback(value) {
   return cleaned || 'To be defined'
 }
 
+function stageText(stage) {
+  if (typeof stage === 'string') return valueOrFallback(stage)
+  if (!stage || typeof stage !== 'object') return 'To be defined'
+
+  const summary = typeof stage.summary === 'string' ? stage.summary.trim() : ''
+  const answers = Array.isArray(stage.answers)
+    ? stage.answers.filter((entry) => typeof entry === 'string' && entry.trim())
+    : []
+
+  return valueOrFallback([summary, ...answers].filter(Boolean).join('\n'))
+}
+
 function buildContext(project) {
   return {
     title: valueOrFallback(project.title),
     category: valueOrFallback(project.category),
     targetUser: valueOrFallback(project.targetUser),
     idea: valueOrFallback(project.idea),
-    features: valueOrFallback(project.blueprint?.stage3),
-    uiux: valueOrFallback(project.blueprint?.stage4),
-    stack: valueOrFallback(project.blueprint?.stage5),
-    stage1: valueOrFallback(project.blueprint?.stage1),
-    stage2: valueOrFallback(project.blueprint?.stage2),
+    features: stageText(project.blueprint?.stage3),
+    uiux: stageText(project.blueprint?.stage4),
+    stack: stageText(project.blueprint?.stage5),
+    stage1: stageText(project.blueprint?.stage1),
+    stage2: stageText(project.blueprint?.stage2),
     todo: valueOrFallback(project.outputs?.todo),
   }
 }

@@ -9,11 +9,11 @@ import {
 export const TOTAL_STAGES = 6
 
 const defaultBlueprint = {
-  stage1: '',
-  stage2: '',
-  stage3: '',
-  stage4: '',
-  stage5: '',
+  stage1: { status: 'in-progress', answers: [], summary: '', questionIndex: 0 },
+  stage2: { status: 'pending', answers: [], summary: '', questionIndex: 0 },
+  stage3: { status: 'pending', answers: [], summary: '', questionIndex: 0 },
+  stage4: { status: 'pending', answers: [], summary: '', questionIndex: 0 },
+  stage5: { status: 'pending', answers: [], summary: '', questionIndex: 0 },
 }
 
 const defaultOutputs = {
@@ -63,6 +63,41 @@ function normalizeProject(project) {
     return { ...defaultMessages }
   })()
 
+  const normalizeStageNode = (value, stageNumber) => {
+    const base = {
+      status: stageNumber === 1 ? 'in-progress' : 'pending',
+      answers: [],
+      summary: '',
+      questionIndex: 0,
+    }
+
+    if (typeof value === 'string') {
+      return {
+        ...base,
+        status: value.trim() ? 'completed' : base.status,
+        summary: value.trim(),
+      }
+    }
+
+    if (value && typeof value === 'object') {
+      const answers = Array.isArray(value.answers)
+        ? value.answers.filter((entry) => typeof entry === 'string' && entry.trim())
+        : []
+      const summary = typeof value.summary === 'string' ? value.summary.trim() : ''
+      const status = typeof value.status === 'string' ? value.status : base.status
+      const questionIndex = Number.isInteger(value.questionIndex) ? Math.max(value.questionIndex, 0) : base.questionIndex
+      return {
+        ...base,
+        status,
+        answers,
+        summary,
+        questionIndex,
+      }
+    }
+
+    return base
+  }
+
   return {
     ...project,
     id: project?.id,
@@ -75,8 +110,11 @@ function normalizeProject(project) {
     createdAt: project?.createdAt || new Date().toISOString(),
     currentStage,
     blueprint: {
-      ...defaultBlueprint,
-      ...(project?.blueprint || {}),
+      stage1: normalizeStageNode(project?.blueprint?.stage1, 1),
+      stage2: normalizeStageNode(project?.blueprint?.stage2, 2),
+      stage3: normalizeStageNode(project?.blueprint?.stage3, 3),
+      stage4: normalizeStageNode(project?.blueprint?.stage4, 4),
+      stage5: normalizeStageNode(project?.blueprint?.stage5, 5),
     },
     outputs: {
       ...defaultOutputs,
