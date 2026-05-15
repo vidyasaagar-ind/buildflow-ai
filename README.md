@@ -74,32 +74,6 @@ BuildFlow AI solves this problem by guiding users through five AI-driven plannin
 
 \---
 
-## System Architecture
-
-!\[System Architecture](docs/system-architecture.png)
-
-\---
-
-## Application Screenshots
-
-### Landing Page
-
-!\[Landing Page](docs/screenshots/landing-page.png)
-
-### Dashboard
-
-!\[Dashboard](docs/screenshots/dashboard.png)
-
-### Workspace
-
-!\[Workspace](docs/screenshots/workspace.png)
-
-### Generated Documents
-
-!\[Outputs](docs/screenshots/output-panel.png)
-
-\---
-
 ## Project Structure
 
 ```text
